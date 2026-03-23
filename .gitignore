@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# IDE / OS
+.idea/
+.vscode/
+Thumbs.db
+.DS_Store
+
+# Local datasets
+LD2_dataset/
+task2_dataset/
+
+# Generated outputs
+artifacts/
+cache/
+*.keras
+*.h5
+*.hdf5
+*.ckpt
+*.weights.h5
+*.npz
+*.npy
+*.joblib
+events.out.tfevents*
+
+# Local logs
+*.log

@@ -1,0 +1,12 @@
+tensorflow-cpu
+tensorflow-datasets
+numpy
+pandas
+matplotlib
+seaborn
+scikit-learn
+pillow
+nbformat
+nbconvert
+ipykernel
+importlib-resources
