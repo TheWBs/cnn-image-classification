@@ -1,28 +1,59 @@
 # DeepLearning
 
-KTU giliojo mokymosi projektas su dviem praktinemis uzduotimis:
+A compact computer vision project focused on reproducible image-classification experiments, custom dataset preparation, CNN benchmarking, and transfer learning.
 
-- `Task 1` - keliu CNN architekturu palyginimas vaizdu klasifikavimui.
-- `Task 2` - individualiai suformuotas keliu saltiniu duomenu rinkinys ir `transfer learning` analize.
+The repository contains two end-to-end pipelines:
 
-README paliktas trumpas ir patogus GitHub perziurai: kas yra repozitorijoje, kaip ji paleisti ir kokie svarbiausi rezultatai.
+- a fashion-subset benchmark that compares multiple convolutional architectures;
+- a multi-source flower classifier that measures the impact of transfer learning and data augmentation.
 
-## Projekto vaizdas
+## Highlights
+
+- Fully reproducible training pipelines for both experiments.
+- Final report notebooks generated from code, not assembled by hand.
+- Clean separation between source code, datasets, generated artifacts, and presentation assets.
+- Lightweight GitHub layout with large files excluded from version control.
+
+## Visual Snapshot
+
+<p align="center">
+  <img src="docs/images/task1_examples.png" width="48%" alt="Task 1 dataset samples" />
+  <img src="docs/images/task2_examples.png" width="48%" alt="Task 2 dataset samples" />
+</p>
+
+<p align="center">
+  <img src="docs/images/task1_model_comparison.png" width="48%" alt="Task 1 model comparison" />
+  <img src="docs/images/task2_accuracy_vs_size.png" width="48%" alt="Task 2 accuracy versus train size" />
+</p>
+
+## Project Flow
 
 ```mermaid
 flowchart LR
-    A[Task 1 dataset] --> B[task1_pipeline.py]
-    B --> C[artifacts/task1]
-    C --> D[build_task1_notebook.py]
-    D --> E[Task1.ipynb]
-
-    F[Task 2 multi-source dataset] --> G[task2_pipeline.py]
-    G --> H[artifacts/task2]
-    H --> I[build_task2_notebook.py]
-    I --> J[Task2.ipynb]
+    A[Raw data] --> B[Preparation and splits]
+    B --> C[Model training]
+    C --> D[Metrics and plots]
+    D --> E[Notebook report]
 ```
 
-## Kas yra repozitorijoje
+```mermaid
+flowchart TD
+    F[Fashion subset benchmark] --> G[task1_pipeline.py]
+    G --> H[Task1.ipynb]
+
+    I[Multi-source flower benchmark] --> J[task2_pipeline.py]
+    J --> K[Task2.ipynb]
+```
+
+## Experiment Overview
+
+| Experiment | Focus | Best result |
+| --- | --- | --- |
+| Fashion subset CNN benchmark | Reference CNN variants vs custom architecture on a filtered fashion dataset | `balanced accuracy = 0.9574` |
+| Reduced-sample analysis | Minimum practical sample size for stable performance | acceptable threshold: `30 000` images |
+| Multi-source flower classification | Scratch vs pretrained models, with and without augmentation | `test accuracy = 0.8542` |
+
+## Repository Layout
 
 ```text
 DeepLearning/
@@ -32,40 +63,16 @@ DeepLearning/
 |-- task2_pipeline.py
 |-- build_task2_notebook.py
 |-- Task2.ipynb
+|-- docs/
+|   `-- images/
 |-- requirements.txt
 |-- .gitignore
 `-- README.md
 ```
 
-Trumpai:
+## Quick Start
 
-- `task1_pipeline.py` ir `task2_pipeline.py` paleidzia visa eksperimentu logika.
-- `build_task*_notebook.py` sugeneruoja ataskaitinius notebook failus.
-- `Task1.ipynb` ir `Task2.ipynb` yra galutiniai darbo pateikimo failai.
-- Dideli datasetai, cache, modeliai ir sugeneruoti artefaktai i GitHub nekeliauja.
-
-## Rezultatu santrauka
-
-| Uzduotis | Geriausias variantas | Esme |
-| --- | --- | --- |
-| Task 1 | `Variantas 8` | `balanced accuracy = 0.9574` |
-| Task 1 | Mano architektura | `balanced accuracy = 0.9552` |
-| Task 1 | Mazesne imtis | priimtina riba: `30 000` paveikslu |
-| Task 2 | `Transfer learning + augmentation` | geriausias `test accuracy = 0.8542` su `50%` train imtimi |
-
-## Darbo eiga
-
-```mermaid
-flowchart TD
-    A[Duomenu paruosimas] --> B[Train / Validation / Test]
-    B --> C[Modelio apmokymas]
-    C --> D[Metrikos ir grafikai]
-    D --> E[Notebook ataskaita]
-```
-
-## Paleidimas
-
-### 1. Aplinkos paruosimas
+### 1. Environment
 
 ```powershell
 python -m venv .venv
@@ -73,9 +80,9 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-### 2. Task 1
+### 2. Fashion subset benchmark
 
-Lokalus duomenu rinkinys turi buti tokios struktros:
+Expected local dataset layout:
 
 ```text
 LD2_dataset/
@@ -86,7 +93,7 @@ LD2_dataset/
     `-- ...
 ```
 
-Paleidimas:
+Run:
 
 ```powershell
 python task1_pipeline.py
@@ -94,11 +101,11 @@ python build_task1_notebook.py
 python -m nbconvert --to notebook --execute --inplace Task1.ipynb
 ```
 
-### 3. Task 2
+### 3. Multi-source flower benchmark
 
-`Task 2` duomenys formuojami automatiskai is keliu saltiniu, todel repozitorijoje jie nelaikomi.
+The second pipeline builds its dataset automatically from external sources during execution.
 
-Paleidimas:
+Run:
 
 ```powershell
 python task2_pipeline.py
@@ -106,19 +113,7 @@ python build_task2_notebook.py
 python -m nbconvert --to notebook --execute --inplace Task2.ipynb
 ```
 
-## Kas ignoruojama per Git
-
-I repozitorija pagal nutylejima neitraukiami:
-
-- lokalus `LD2_dataset/` ir `task2_dataset/`;
-- `artifacts/` su grafikais, modeliais ir lentelemis;
-- `cache/`, `__pycache__/`, notebook checkpointai;
-- virtualios aplinkos ir IDE failai;
-- tarpiniai modeliu svoriai, log failai ir kiti sugeneruoti ML failai.
-
-Tai leidzia laikyti repozitorija lengva ir atkartojama.
-
-## Naudotos bibliotekos
+## Tech Stack
 
 - `TensorFlow / Keras`
 - `TensorFlow Datasets`
@@ -131,6 +126,6 @@ Tai leidzia laikyti repozitorija lengva ir atkartojama.
 - `nbformat`
 - `nbconvert`
 
-## Pastaba
+## Reproducibility
 
-Jei noretum i GitHub ikelti ir pasirinktas iliustracijas ar rezultatu failus, juos galima prideti ranka atskirai. Pagal nutylejima repo paliktas svarus: tik kodas, notebook'ai ir paleidimo instrukcija.
+The repository keeps only the lightweight, reproducible project surface: source code, notebooks, documentation, and selected README visuals. Datasets, caches, model weights, and generated artifacts are intentionally excluded through `.gitignore`.
