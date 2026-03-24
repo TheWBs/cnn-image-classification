@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import gc
 import json
 import os
@@ -73,6 +74,7 @@ ARCHITECTURE_NOTES = {
     "variant_7": "3x3 convolution, stride 1, valid padding, AveragePooling then MaxPooling, GlobalAveragePooling and Dropout(0.3).",
     "variant_8": "3x3 convolution, stride 1, valid padding, AveragePooling, BatchNormalization blocks and a Dense(128) classifier head.",
     "custom_model": "3x3 convolution, stride 1, same padding, BatchNormalization, GlobalAveragePooling and Dropout regularization.",
+    "defense_model": "A lightweight editable CNN reserved for quick architecture demos and defense-time experiments.",
 }
 
 
@@ -329,6 +331,38 @@ def build_custom_model() -> keras.Model:
     return keras.Model(inputs=inputs, outputs=outputs, name="custom_model")
 
 
+def build_defense_model() -> keras.Model:
+    inputs = keras.Input(shape=IMAGE_SHAPE, name="input_layer")
+    x = layers.Conv2D(32, (3, 3), padding="same", use_bias=False)(inputs)
+    x = layers.BatchNormalization()(x)
+    x = layers.Activation("relu")(x)
+    x = layers.MaxPooling2D(pool_size=(2, 2))(x)
+
+    x = layers.Conv2D(64, (3, 3), padding="same", use_bias=False)(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.Activation("relu")(x)
+    x = layers.MaxPooling2D(pool_size=(2, 2))(x)
+
+    x = layers.Conv2D(128, (3, 3), padding="same", use_bias=False)(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.Activation("relu")(x)
+    x = layers.GlobalAveragePooling2D()(x)
+    x = layers.Dense(96, activation="relu")(x)
+    x = layers.Dropout(0.25)(x)
+    outputs = layers.Dense(NUM_CLASSES, activation="softmax")(x)
+    return keras.Model(inputs=inputs, outputs=outputs, name="defense_model")
+
+
+def get_model_registry() -> dict[str, tuple[str, Callable[[], keras.Model]]]:
+    return {
+        "variant_2": ("Variantas 2", build_variant_2),
+        "variant_7": ("Variantas 7", build_variant_7),
+        "variant_8": ("Variantas 8", build_variant_8),
+        "custom_model": ("Mano architektura", build_custom_model),
+        "defense_model": ("Defense model", build_defense_model),
+    }
+
+
 def compile_model(model: keras.Model, learning_rate: float = 1e-3) -> keras.Model:
     model.compile(
         optimizer=keras.optimizers.Adam(learning_rate=learning_rate),
@@ -427,11 +461,14 @@ def train_and_evaluate_model(
     y_test: np.ndarray,
     class_weight: dict[int, float],
     epochs: int,
+    learning_rate: float = 1e-3,
+    batch_size: int = BATCH_SIZE,
+    save_model: bool = True,
 ) -> dict[str, Any]:
     print(f"\n=== Training {display_name} ===", flush=True)
     keras.backend.clear_session()
     tf.keras.utils.set_random_seed(SEED)
-    model = compile_model(builder())
+    model = compile_model(builder(), learning_rate=learning_rate)
 
     summary_text = capture_model_summary(model)
     summary_path = REPORTS_DIR / f"{model_key}_summary.txt"
@@ -448,7 +485,7 @@ def train_and_evaluate_model(
         y_train,
         validation_data=(x_val, y_val),
         epochs=epochs,
-        batch_size=BATCH_SIZE,
+        batch_size=batch_size,
         class_weight=class_weight,
         verbose=2,
         callbacks=callbacks,
@@ -477,8 +514,10 @@ def train_and_evaluate_model(
         columns=[CLASS_NAMES[i] for i in range(NUM_CLASSES)],
     ).to_csv(matrix_path)
 
-    model_path = MODELS_DIR / f"{model_key}.keras"
-    model.save(model_path)
+    model_path: Path | None = None
+    if save_model:
+        model_path = MODELS_DIR / f"{model_key}.keras"
+        model.save(model_path)
 
     result = {
         "model_key": model_key,
@@ -489,13 +528,16 @@ def train_and_evaluate_model(
         "best_val_loss": best_val_loss,
         "best_val_accuracy": best_val_accuracy,
         "training_seconds": float(training_seconds),
+        "batch_size": int(batch_size),
+        "learning_rate": float(learning_rate),
+        "train_samples": int(len(x_train)),
         "history_csv": relative_path(history_path),
         "history_plot": relative_path(history_plot),
         "confusion_matrix_csv": relative_path(matrix_path),
         "confusion_matrix_plot": relative_path(confusion_plot),
         "classification_report_json": relative_path(report_path),
         "model_summary_txt": relative_path(summary_path),
-        "model_path": relative_path(model_path),
+        "model_path": relative_path(model_path) if model_path is not None else None,
         "per_class_accuracy": per_class_accuracy,
         **metrics,
     }
@@ -801,7 +843,135 @@ def build_results_payload(
     return payload
 
 
+def build_quick_train_subset(
+    train_df: pd.DataFrame,
+    images: np.ndarray,
+    filename_index: pd.Index,
+    train_limit: int | None,
+) -> tuple[pd.DataFrame, np.ndarray, np.ndarray]:
+    sorted_train_df = train_df.sort_values("filename").reset_index(drop=True)
+    if train_limit is None or train_limit <= 0 or train_limit >= len(sorted_train_df):
+        subset_df = sorted_train_df
+    else:
+        subset_df = sorted_train_df.iloc[:train_limit].copy()
+
+    subset_indices = filename_index.get_indexer(subset_df["filename"])
+    if np.any(subset_indices < 0):
+        raise ValueError("Could not align all filenames for the quick-run subset.")
+
+    x_subset = images[subset_indices].astype("float32") / 255.0
+    y_subset = subset_df["target"].to_numpy(dtype=np.int64)
+    return subset_df, x_subset, y_subset
+
+
+def sanitize_run_name(value: str) -> str:
+    cleaned = "".join(char.lower() if char.isalnum() else "_" for char in value.strip())
+    while "__" in cleaned:
+        cleaned = cleaned.replace("__", "_")
+    return cleaned.strip("_") or "quick_run"
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Task 1 CNN experiments")
+    parser.add_argument("--mode", choices=["full", "quick"], default="full")
+    parser.add_argument(
+        "--model",
+        default="defense_model",
+        help="Model key for quick mode. Available keys: variant_2, variant_7, variant_8, custom_model, defense_model.",
+    )
+    parser.add_argument("--epochs", type=int, default=None, help="Override the number of epochs.")
+    parser.add_argument(
+        "--train-limit",
+        type=int,
+        default=10000,
+        help="Use the first N training images by filename in quick mode. Use 0 for the full train split.",
+    )
+    parser.add_argument("--batch-size", type=int, default=128, help="Batch size used in quick mode.")
+    parser.add_argument("--learning-rate", type=float, default=1e-3, help="Learning rate used in quick mode.")
+    parser.add_argument("--run-name", type=str, default=None, help="Optional suffix for quick-run artifact names.")
+    parser.add_argument("--list-models", action="store_true", help="Print available model keys and exit.")
+    return parser.parse_args()
+
+
+def run_quick_mode(args: argparse.Namespace) -> None:
+    registry = get_model_registry()
+    if args.model not in registry:
+        raise ValueError(f"Unknown model key '{args.model}'. Use --list-models to inspect the options.")
+
+    ensure_directories()
+    configure_runtime()
+
+    variant_df = load_variant_dataframe()
+    split_frames = create_split_dataframe(variant_df)
+    images, filename_index = load_or_create_image_cache(variant_df)
+    arrays = build_split_arrays(split_frames, images, filename_index)
+
+    subset_df, x_train, y_train = build_quick_train_subset(
+        train_df=split_frames["train"],
+        images=images,
+        filename_index=filename_index,
+        train_limit=args.train_limit,
+    )
+    x_val, y_val = arrays["validation"]
+    x_test, y_test = arrays["test"]
+    class_weight = compute_class_weights(y_train)
+
+    display_name, builder = registry[args.model]
+    run_suffix = sanitize_run_name(args.run_name) if args.run_name else f"{args.model}_{len(subset_df)}"
+    artifact_key = f"quick_{run_suffix}"
+    epochs = args.epochs or 6
+
+    print(
+        f"\nQuick mode: training '{display_name}' with {len(subset_df)} training images for up to {epochs} epochs.",
+        flush=True,
+    )
+    result = train_and_evaluate_model(
+        model_key=artifact_key,
+        display_name=f"{display_name} [quick]",
+        builder=builder,
+        x_train=x_train,
+        y_train=y_train,
+        x_val=x_val,
+        y_val=y_val,
+        x_test=x_test,
+        y_test=y_test,
+        class_weight=class_weight,
+        epochs=epochs,
+        learning_rate=args.learning_rate,
+        batch_size=args.batch_size,
+        save_model=False,
+    )
+
+    summary_path = REPORTS_DIR / f"{artifact_key}_result.json"
+    quick_payload = {
+        "mode": "quick",
+        "model_key": args.model,
+        "artifact_key": artifact_key,
+        "train_limit": int(len(subset_df)),
+        "epochs_requested": int(epochs),
+        "result": result,
+    }
+    with summary_path.open("w", encoding="utf-8") as handle:
+        json.dump(to_serializable(quick_payload), handle, indent=2, ensure_ascii=False)
+
+    print("\nQuick run summary:", flush=True)
+    print(json.dumps(to_serializable(quick_payload), indent=2, ensure_ascii=False), flush=True)
+    print(f"\nQuick-run result saved to: {summary_path}", flush=True)
+
+
 def main() -> None:
+    args = parse_args()
+    registry = get_model_registry()
+
+    if args.list_models:
+        for model_key, (display_name, _) in registry.items():
+            print(f"{model_key}: {display_name}")
+        return
+
+    if args.mode == "quick":
+        run_quick_mode(args)
+        return
+
     ensure_directories()
     configure_runtime()
 
@@ -819,11 +989,10 @@ def main() -> None:
     x_test, y_test = arrays["test"]
     class_weight = compute_class_weights(y_train)
 
-    builders: list[tuple[str, str, Callable[[], keras.Model]]] = [
-        ("variant_2", "Variantas 2", build_variant_2),
-        ("variant_7", "Variantas 7", build_variant_7),
-        ("variant_8", "Variantas 8", build_variant_8),
-        ("custom_model", "Mano architektura", build_custom_model),
+    builders = [
+        (model_key, display_name, builder)
+        for model_key, (display_name, builder) in get_model_registry().items()
+        if model_key != "defense_model"
     ]
 
     main_results: list[dict[str, Any]] = []
